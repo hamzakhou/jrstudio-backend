@@ -13,11 +13,14 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// دالة لإنشاء الجداول وضمان جاهزيتها
+// دالة لإنشاء وتحديث الجداول وضمان جاهزيتها
 const initDb = async () => {
   try {
+    // حذف الجدول القديم لضمان تحديث أعمدته بالأسماء الصحيحة
+    await pool.query(`DROP TABLE IF EXISTS transactions CASCADE;`);
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS transactions (
+      CREATE TABLE transactions (
         id BIGINT PRIMARY KEY,
         barber VARCHAR(100) NOT NULL,
         service_name VARCHAR(255) NOT NULL,
@@ -49,7 +52,7 @@ const initDb = async () => {
         laisse_net NUMERIC(10, 2) NOT NULL
       );
     `);
-    console.log("Database tables initialized successfully.");
+    console.log("Database tables recreated & initialized successfully.");
   } catch (err) {
     console.error("Error initializing database tables:", err);
   }
@@ -61,7 +64,7 @@ initDb();
 // --- 1. TRANSACTIONS ROUTES ---
 app.get('/api/transactions', async (req, res) => {
   try {
-    await initDb(); // ضمان وجود الجدول قبل الاستعلام
+    await initDb();
     const result = await pool.query('SELECT id, barber, service_name as "serviceName", short_name as "shortName", price, tip, time FROM transactions ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
@@ -72,7 +75,7 @@ app.get('/api/transactions', async (req, res) => {
 
 app.post('/api/transactions', async (req, res) => {
   try {
-    await initDb(); // ضمان وجود الجدول قبل الإدخال
+    await initDb();
     const { id, barber, serviceName, shortName, price, tip, time } = req.body;
     
     const query = `
