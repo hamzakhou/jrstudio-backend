@@ -13,7 +13,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// إنشاء الجداول تلقائياً عند تشغيل السيرفر إن لم تكن موجودة
+// دالة لإنشاء الجداول وضمان جاهزيتها
 const initDb = async () => {
   try {
     await pool.query(`
@@ -55,32 +55,46 @@ const initDb = async () => {
   }
 };
 
+// تشغيل التهيئة فوراً
 initDb();
 
 // --- 1. TRANSACTIONS ROUTES ---
 app.get('/api/transactions', async (req, res) => {
   try {
+    await initDb(); // ضمان وجود الجدول قبل الاستعلام
     const result = await pool.query('SELECT id, barber, service_name as "serviceName", short_name as "shortName", price, tip, time FROM transactions ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
+    console.error("Error fetching transactions:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 app.post('/api/transactions', async (req, res) => {
   try {
+    await initDb(); // ضمان وجود الجدول قبل الإدخال
     const { id, barber, serviceName, shortName, price, tip, time } = req.body;
+    
     const query = `
       INSERT INTO transactions (id, barber, service_name, short_name, price, tip, time)
       VALUES ($1, $2, $3, $4, $5, $6, $7) 
       RETURNING id, barber, service_name as "serviceName", short_name as "shortName", price, tip, time;
     `;
-    const values = [id, barber, serviceName, shortName, price, tip || 0, time];
+    const values = [
+      Number(id) || Date.now(), 
+      barber || 'Unknown', 
+      serviceName || 'Service', 
+      shortName || 'SRV', 
+      Number(price) || 0, 
+      Number(tip) || 0, 
+      time || ''
+    ];
+    
     const result = await pool.query(query, values);
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error("Error inserting transaction:", err);
-    res.status(500).json({ error: err.message });
+    console.error("Error inserting transaction:", err.message, err.detail);
+    res.status(500).json({ error: err.message, detail: err.detail });
   }
 });
 
@@ -93,7 +107,7 @@ app.put('/api/transactions/:id/tip', async (req, res) => {
       UPDATE transactions SET tip = $1 WHERE id = $2 
       RETURNING id, barber, service_name as "serviceName", short_name as "shortName", price, tip, time;
     `;
-    const result = await pool.query(query, [tip || 0, id]);
+    const result = await pool.query(query, [Number(tip) || 0, id]);
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -113,6 +127,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
 // --- 2. EXPENSES ROUTES ---
 app.get('/api/expenses', async (req, res) => {
   try {
+    await initDb();
     const result = await pool.query('SELECT * FROM expenses ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
@@ -122,12 +137,13 @@ app.get('/api/expenses', async (req, res) => {
 
 app.post('/api/expenses', async (req, res) => {
   try {
+    await initDb();
     const { id, title, amount }  = req.body;
     const query = `
       INSERT INTO expenses (id, title, amount)
       VALUES ($1, $2, $3) RETURNING *;
     `;
-    const values = [id, title, amount];
+    const values = [Number(id) || Date.now(), title || 'Expense', Number(amount) || 0];
     const result = await pool.query(query, values);
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -148,6 +164,7 @@ app.delete('/api/expenses/:id', async (req, res) => {
 // --- 3. SETTINGS (Yesterday Caisse) ROUTES ---
 app.get('/api/settings/:key', async (req, res) => {
   try {
+    await initDb();
     const { key } = req.params;
     const result = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
     res.json({ value: result.rows[0] ? result.rows[0].value : '' });
@@ -158,6 +175,7 @@ app.get('/api/settings/:key', async (req, res) => {
 
 app.post('/api/settings', async (req, res) => {
   try {
+    await initDb();
     const { key, value } = req.body;
     const query = `
       INSERT INTO settings (key, value) VALUES ($1, $2)
@@ -209,6 +227,7 @@ app.post('/api/cloture', async (req, res) => {
 
 app.get('/api/archives', async (req, res) => {
   try {
+    await initDb();
     const result = await pool.query('SELECT * FROM daily_archives ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
