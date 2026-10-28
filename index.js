@@ -13,14 +13,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// دالة لإنشاء وتحديث الجداول وضمان جاهزيتها
+// دالة لإنشاء الجداول مرة واحدة إن لم تكن موجودة (بدون مسح البيانات)
 const initDb = async () => {
   try {
-    // حذف الجدول القديم لضمان تحديث أعمدته بالأسماء الصحيحة
-    await pool.query(`DROP TABLE IF EXISTS transactions CASCADE;`);
-
     await pool.query(`
-      CREATE TABLE transactions (
+      CREATE TABLE IF NOT EXISTS transactions (
         id BIGINT PRIMARY KEY,
         barber VARCHAR(100) NOT NULL,
         service_name VARCHAR(255) NOT NULL,
@@ -52,19 +49,17 @@ const initDb = async () => {
         laisse_net NUMERIC(10, 2) NOT NULL
       );
     `);
-    console.log("Database tables recreated & initialized successfully.");
+    console.log("Database tables checked/initialized successfully.");
   } catch (err) {
     console.error("Error initializing database tables:", err);
   }
 };
 
-// تشغيل التهيئة فوراً
 initDb();
 
 // --- 1. TRANSACTIONS ROUTES ---
 app.get('/api/transactions', async (req, res) => {
   try {
-    await initDb();
     const result = await pool.query('SELECT id, barber, service_name as "serviceName", short_name as "shortName", price, tip, time FROM transactions ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
@@ -75,7 +70,6 @@ app.get('/api/transactions', async (req, res) => {
 
 app.post('/api/transactions', async (req, res) => {
   try {
-    await initDb();
     const { id, barber, serviceName, shortName, price, tip, time } = req.body;
     
     const query = `
@@ -96,12 +90,11 @@ app.post('/api/transactions', async (req, res) => {
     const result = await pool.query(query, values);
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error("Error inserting transaction:", err.message, err.detail);
-    res.status(500).json({ error: err.message, detail: err.detail });
+    console.error("Error inserting transaction:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// مسار لتحديث الـ Tip لمعاملة معينة
 app.put('/api/transactions/:id/tip', async (req, res) => {
   try {
     const { id } = req.params;
@@ -130,7 +123,6 @@ app.delete('/api/transactions/:id', async (req, res) => {
 // --- 2. EXPENSES ROUTES ---
 app.get('/api/expenses', async (req, res) => {
   try {
-    await initDb();
     const result = await pool.query('SELECT * FROM expenses ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
@@ -140,7 +132,6 @@ app.get('/api/expenses', async (req, res) => {
 
 app.post('/api/expenses', async (req, res) => {
   try {
-    await initDb();
     const { id, title, amount }  = req.body;
     const query = `
       INSERT INTO expenses (id, title, amount)
@@ -164,10 +155,9 @@ app.delete('/api/expenses/:id', async (req, res) => {
   }
 });
 
-// --- 3. SETTINGS (Yesterday Caisse) ROUTES ---
+// --- 3. SETTINGS ROUTES ---
 app.get('/api/settings/:key', async (req, res) => {
   try {
-    await initDb();
     const { key } = req.params;
     const result = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
     res.json({ value: result.rows[0] ? result.rows[0].value : '' });
@@ -178,7 +168,6 @@ app.get('/api/settings/:key', async (req, res) => {
 
 app.post('/api/settings', async (req, res) => {
   try {
-    await initDb();
     const { key, value } = req.body;
     const query = `
       INSERT INTO settings (key, value) VALUES ($1, $2)
@@ -219,7 +208,7 @@ app.post('/api/cloture', async (req, res) => {
     await client.query('DELETE FROM expenses');
 
     await client.query('COMMIT');
-    res.status(200).json({ message: 'Clôture executed successfully! Day archived and reset.' });
+    res.status(200).json({ message: 'Clôture executed successfully!' });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
@@ -230,7 +219,6 @@ app.post('/api/cloture', async (req, res) => {
 
 app.get('/api/archives', async (req, res) => {
   try {
-    await initDb();
     const result = await pool.query('SELECT * FROM daily_archives ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
