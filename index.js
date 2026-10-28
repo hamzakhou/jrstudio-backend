@@ -6,7 +6,11 @@ const pool = require('./db');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type']
+}));
 app.use(express.json());
 
 // إنشاء الجداول تلقائياً عند تشغيل السيرفر إن لم تكن موجودة
@@ -56,7 +60,7 @@ initDb();
 // --- 1. TRANSACTIONS ROUTES ---
 app.get('/api/transactions', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM transactions ORDER BY id DESC');
+    const result = await pool.query('SELECT id, barber, service_name as "serviceName", short_name as "shortName", price, tip, time FROM transactions ORDER BY id DESC');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -68,11 +72,29 @@ app.post('/api/transactions', async (req, res) => {
     const { id, barber, serviceName, shortName, price, tip, time } = req.body;
     const query = `
       INSERT INTO transactions (id, barber, service_name, short_name, price, tip, time)
-      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *;
+      VALUES ($1, $2, $3, $4, $5, $6, $7) 
+      RETURNING id, barber, service_name as "serviceName", short_name as "shortName", price, tip, time;
     `;
     const values = [id, barber, serviceName, shortName, price, tip || 0, time];
     const result = await pool.query(query, values);
     res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Error inserting transaction:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// مسار لتحديث الـ Tip لمعاملة معينة
+app.put('/api/transactions/:id/tip', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tip } = req.body;
+    const query = `
+      UPDATE transactions SET tip = $1 WHERE id = $2 
+      RETURNING id, barber, service_name as "serviceName", short_name as "shortName", price, tip, time;
+    `;
+    const result = await pool.query(query, [tip || 0, id]);
+    res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -142,7 +164,7 @@ app.post('/api/settings', async (req, res) => {
       ON CONFLICT (key) DO UPDATE SET value = $2 RETURNING *;
     `;
     const result = await pool.query(query, [key, value]);
-    res.status(200).json(result.rows[0]);
+    res.status(200).json(result.rows[result.rows.length - 1]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
