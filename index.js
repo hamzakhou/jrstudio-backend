@@ -217,6 +217,16 @@ app.post('/api/cloture', async (req, res) => {
   }
 });
 
+// المسار المطلوب لتتوافق الواجهة الأمامية تماماً
+app.get('/api/cloture/history', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM daily_archives ORDER BY id DESC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/archives', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM daily_archives ORDER BY id DESC');
